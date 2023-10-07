@@ -1116,6 +1116,73 @@ TIMEOUT=5
 
 		self.helper_flags['bootloader'] = "efistub"
 
+	def _add_refind_bootloader(
+		self,
+		root_partition: disk.PartitionModification,
+		efi_partition: Optional[disk.PartitionModification]
+	):
+		if not SysInfo.has_uefi():
+			raise HardwareIncompatibilityError
+
+		if not efi_partition:
+			raise ValueError('Could not detect efi partition')
+
+		self.pacman.strap('refind')
+
+		# TODO: Ideally we would want to check if another config
+		# points towards the same disk and/or partition.
+		# And in which case we should do some clean up.
+
+		# '--yes' in case the machine is started with Secure Boot (rEFInd complains about no '--shim' option otherwise)
+		SysCommand(f"/usr/bin/arch-chroot {self.target} refind-install --yes")
+
+		# Create a rEFInd pacman hook
+		# https://wiki.archlinux.org/title/REFInd#Pacman_hook
+		self._create_pacman_hook('refind.hook', f"""[Trigger]
+Operation=Upgrade
+Type=Package
+Target=refind
+
+[Action]
+Description = Updating rEFInd on ESP
+When=PostTransaction
+Exec=/usr/bin/refind-install --yes
+""")
+
+		microcode = []
+
+		if ucode := self._get_microcode():
+			microcode.append(rf'initrd=\{ucode}')
+		else:
+			debug('Archinstall will not add any ucode to refind config.')
+
+		kernel_parameters = self._get_kernel_params(root_partition)
+
+		# 'refind-install' detects kernel parameters for the Live CD
+		# we override the entire file to make sure the correct parameters are set
+		initramfs = r'initrd=\initramfs-%v.img'
+		initramfs_fallback = r'initrd=\initramfs-%v-fallback.img'
+
+		config = f""""Boot with standard options"     "{' '.join([*microcode, initramfs, *kernel_parameters])}"
+"Boot using fallback initramfs"  "{' '.join([*microcode, initramfs_fallback, *kernel_parameters])}"
+"Boot to single-user mode"       "{' '.join([*microcode, initramfs, 'single', *kernel_parameters])}"
+"""
+
+		refind_linux_conf = self.target / 'boot/refind_linux.conf'
+		refind_linux_conf.write_text(config)
+
+		# The default rEFInd configuration cannot find initramfs for the Archlinux kernels
+		# https://wiki.archlinux.org/title/REFInd#For_kernels_automatically_detected_by_rEFInd
+		refind_conf = self.target / efi_partition.relative_mountpoint / 'EFI/refind/refind.conf'
+		config = refind_conf.read_text()
+
+		config = re.sub(r'#extra_kernel_version_strings.*?\n',
+			r'extra_kernel_version_strings linux-hardened,linux-rt-lts,linux-zen,linux-lts,linux-rt,linux\n', config, 1)
+
+		refind_conf.write_text(config)
+
+		self.helper_flags['bootloader'] = "refind"
+
 	def add_bootloader(self, bootloader: Bootloader):
 		"""
 		Adds a bootloader to the installation instance.
@@ -1124,6 +1191,7 @@ TIMEOUT=5
 		* grub
 		* limine (beta)
 		* efistub (beta)
+		* refind (beta)
 
 		:param bootloader: Type of bootloader to be added
 		"""
@@ -1156,6 +1224,8 @@ TIMEOUT=5
 				self._add_efistub_bootloader(boot_partition, root_partition)
 			case Bootloader.Limine:
 				self._add_limine_bootloader(boot_partition, root_partition)
+			case Bootloader.Refind:
+				self._add_refind_bootloader(root_partition, efi_partition)
 
 	def add_additional_packages(self, packages: Union[str, List[str]]) -> bool:
 		return self.pacman.strap(packages)

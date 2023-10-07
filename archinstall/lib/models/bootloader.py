@@ -13,6 +13,7 @@ class Bootloader(Enum):
 	Grub = 'Grub'
 	Efistub = 'Efistub'
 	Limine = 'Limine'
+	Refind = 'Refind'
 
 	def json(self) -> str:
 		return self.value

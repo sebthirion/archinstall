@@ -32,7 +32,8 @@
             "enum": [
                 "systemd-bootctl",
                 "grub-install",
-                "efistub"
+                "efistub",
+                "refind"
             ]
         },
         "custom-commands": {
