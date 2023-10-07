@@ -779,6 +779,13 @@ class Installer:
 
 		return kernel_parameters
 
+	def _create_pacman_hook(self, filename: str, contents: str):
+		hook_dir = self.target / 'etc/pacman.d/hooks'
+		hook_dir.mkdir(exist_ok=True)
+
+		hook_path = hook_dir / filename
+		hook_path.write_text(contents)
+
 	def _add_systemd_bootloader(
 		self,
 		boot_partition: disk.PartitionModification,
@@ -971,11 +978,6 @@ class Installer:
 
 		root_uuid = root_partition.uuid
 
-		def create_pacman_hook(contents: str):
-			HOOK_DIR = "/etc/pacman.d/hooks"
-			SysCommand(f"/usr/bin/arch-chroot {self.target} mkdir -p {HOOK_DIR}")
-			SysCommand(f"/usr/bin/arch-chroot {self.target} sh -c \"echo '{contents}' > {HOOK_DIR}/liminedeploy.hook\"")
-
 		if SysInfo.has_uefi():
 			try:
 				# The `limine.sys` file, contains stage 3 code.
@@ -990,7 +992,7 @@ class Installer:
 				raise DiskError(f"Failed to install Limine BOOTX64.EFI on {boot_partition.dev_path}: {err}")
 
 			# Create the EFI limine pacman hook.
-			create_pacman_hook("""
+			self._create_pacman_hook('liminedeploy.hook', """
 [Trigger]
 Operation = Install
 Operation = Upgrade
@@ -1026,7 +1028,7 @@ Exec = /usr/bin/cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 			except SysCallError as err:
 				raise DiskError(f"Failed to install Limine on {boot_partition.dev_path}: {err}")
 
-			create_pacman_hook(f"""
+			self._create_pacman_hook('liminedeploy.hook', f"""
 [Trigger]
 Operation = Install
 Operation = Upgrade
