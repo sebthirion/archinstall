@@ -1160,8 +1160,15 @@ Exec=/usr/bin/refind-install --yes
 
 		# 'refind-install' detects kernel parameters for the Live CD
 		# we override the entire file to make sure the correct parameters are set
-		initramfs = r'initrd=\initramfs-%v.img'
-		initramfs_fallback = r'initrd=\initramfs-%v-fallback.img'
+		# we try to detect if '/boot' sits on its own partition
+		boot_prefix = r'\boot'
+		for mod in self._disk_config.device_modifications:
+			for part in mod.partitions:
+				if part.mountpoint and part.mountpoint == Path('/boot'):
+					boot_prefix = ''
+
+		initramfs = rf'initrd={boot_prefix}\initramfs-%v.img'
+		initramfs_fallback = rf'initrd={boot_prefix}\initramfs-%v-fallback.img'
 
 		config = f""""Boot with standard options"     "{' '.join([*microcode, initramfs, *kernel_parameters])}"
 "Boot using fallback initramfs"  "{' '.join([*microcode, initramfs_fallback, *kernel_parameters])}"
