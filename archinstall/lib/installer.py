@@ -717,6 +717,18 @@ class Installer:
 				return boot
 		return None
 
+	def _get_kernels_partition(self) -> Optional[disk.PartitionModification]:
+		for layout in self._disk_config.device_modifications:
+			for part in layout.partitions:
+				if part.mountpoint and part.mountpoint == Path('/boot'):
+					return part
+
+				for sub_vol in part.btrfs_subvols:
+					if sub_vol.mountpoint and sub_vol.mountpoint == Path('/boot'):
+						return part
+
+		return self._get_root_partition()
+
 	def _get_root_partition(self) -> Optional[disk.PartitionModification]:
 		for mod in self._disk_config.device_modifications:
 			if root := mod.get_root_partition():
@@ -1119,7 +1131,8 @@ TIMEOUT=5
 	def _add_refind_bootloader(
 		self,
 		root_partition: disk.PartitionModification,
-		efi_partition: Optional[disk.PartitionModification]
+		efi_partition: Optional[disk.PartitionModification],
+		kernels_partition: disk.PartitionModification
 	):
 		if not SysInfo.has_uefi():
 			raise HardwareIncompatibilityError
@@ -1160,12 +1173,10 @@ Exec=/usr/bin/refind-install --yes
 
 		# 'refind-install' detects kernel parameters for the Live CD
 		# we override the entire file to make sure the correct parameters are set
-		# we try to detect if '/boot' sits on its own partition
 		boot_prefix = r'\boot'
-		for mod in self._disk_config.device_modifications:
-			for part in mod.partitions:
-				if part.mountpoint and part.mountpoint == Path('/boot'):
-					boot_prefix = ''
+
+		if kernels_partition != root_partition:
+			boot_prefix = ''
 
 		initramfs = rf'initrd={boot_prefix}\initramfs-%v.img'
 		initramfs_fallback = rf'initrd={boot_prefix}\initramfs-%v-fallback.img'
@@ -1212,10 +1223,14 @@ Exec=/usr/bin/refind-install --yes
 
 		efi_partition = self._get_efi_partition()
 		boot_partition = self._get_boot_partition()
+		kernels_partition = self._get_kernels_partition()
 		root_partition = self._get_root_partition()
 
 		if boot_partition is None:
 			raise ValueError(f'Could not detect boot at mountpoint {self.target}')
+
+		if kernels_partition is None:
+			raise ValueError(f'Could not detect "/boot" at mountpoint {self.target}')
 
 		if root_partition is None:
 			raise ValueError(f'Could not detect root at mountpoint {self.target}')
@@ -1232,7 +1247,7 @@ Exec=/usr/bin/refind-install --yes
 			case Bootloader.Limine:
 				self._add_limine_bootloader(boot_partition, root_partition)
 			case Bootloader.Refind:
-				self._add_refind_bootloader(root_partition, efi_partition)
+				self._add_refind_bootloader(root_partition, efi_partition, kernels_partition)
 
 	def add_additional_packages(self, packages: Union[str, List[str]]) -> bool:
 		return self.pacman.strap(packages)
