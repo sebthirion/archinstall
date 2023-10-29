@@ -1162,13 +1162,6 @@ When=PostTransaction
 Exec=/usr/bin/refind-install --yes
 """)
 
-		microcode = []
-
-		if ucode := self._get_microcode():
-			microcode.append(rf'initrd=\{ucode}')
-		else:
-			debug('Archinstall will not add any ucode to refind config.')
-
 		kernel_parameters = self._get_kernel_params(root_partition)
 
 		# 'refind-install' detects kernel parameters for the Live CD
@@ -1183,6 +1176,13 @@ Exec=/usr/bin/refind-install --yes
 
 		initramfs = rf'initrd={boot_prefix}\initramfs-%v.img'
 		initramfs_fallback = rf'initrd={boot_prefix}\initramfs-%v-fallback.img'
+
+		microcode = []
+
+		if ucode := self._get_microcode():
+			microcode.append(rf'initrd={boot_prefix}\{ucode}')
+		else:
+			debug('Archinstall will not add any ucode to refind config.')
 
 		config = f""""Boot with standard options"     "{' '.join([*microcode, initramfs, *kernel_parameters])}"
 "Boot using fallback initramfs"  "{' '.join([*microcode, initramfs_fallback, *kernel_parameters])}"
