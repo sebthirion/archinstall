@@ -1178,6 +1178,9 @@ Exec=/usr/bin/refind-install --yes
 		if kernels_partition != root_partition:
 			boot_prefix = ''
 
+		if kernels_partition.fs_type == disk.FilesystemType.Btrfs:
+			boot_prefix = '@' + boot_prefix
+
 		initramfs = rf'initrd={boot_prefix}\initramfs-%v.img'
 		initramfs_fallback = rf'initrd={boot_prefix}\initramfs-%v-fallback.img'
 
